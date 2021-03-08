@@ -10,13 +10,13 @@ echo $adminUsername:$1 | awk '{print substr($1,2); }' >> vars.sh
 echo $SPN_CLIENT_ID:$2 | awk '{print substr($1,2); }' >> vars.sh
 echo $SPN_CLIENT_SECRET:$3 | awk '{print substr($1,2); }' >> vars.sh
 echo $SPN_TENANT_ID:$4 | awk '{print substr($1,2); }' >> vars.sh
-echo $K3s_VM_NAME:$5 | awk '{print substr($1,2); }' >> vars.sh
+echo $vmName:$5 | awk '{print substr($1,2); }' >> vars.sh
 echo $AZURE_LOCATION:$6 | awk '{print substr($1,2); }' >> vars.sh
 sed -i '2s/^/export adminUsername=/' vars.sh
 sed -i '3s/^/export SPN_CLIENT_ID=/' vars.sh
 sed -i '4s/^/export SPN_CLIENT_SECRET=/' vars.sh
 sed -i '5s/^/export SPN_TENANT_ID=/' vars.sh
-sed -i '6s/^/export K3s_VM_NAME=/' vars.sh
+sed -i '6s/^/export vmName=/' vars.sh
 sed -i '7s/^/export AZURE_LOCATION=/' vars.sh
 
 chmod +x vars.sh 
@@ -46,6 +46,6 @@ sudo -u $adminUsername az extension add --name k8s-configuration
 sudo -u $adminUsername az login --service-principal --username $SPN_CLIENT_ID --SPN_CLIENT_SECRET $SPN_CLIENT_SECRET --tenant $SPN_TENANT_ID
 
 # Onboard the cluster to Azure Arc
-resourceGroup=$(sudo -u $adminUsername az resource list --query "[?name=='$K3s_VM_NAME']".[resourceGroup] --resource-type "Microsoft.Compute/virtualMachines" -o tsv)
-sudo -u $adminUsername az connectedk8s connect --name $K3s_VM_NAME --resource-group $resourceGroup --location $AZURE_LOCATION --tags 'Project=jumpstart_azure_arc_k8s'
+resourceGroup=$(sudo -u $adminUsername az resource list --query "[?name=='$vmName']".[resourceGroup] --resource-type "Microsoft.Compute/virtualMachines" -o tsv)
+sudo -u $adminUsername az connectedk8s connect --name $vmName --resource-group $resourceGroup --location $AZURE_LOCATION --tags 'Project=jumpstart_azure_arc_k8s'
 
