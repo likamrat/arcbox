@@ -11,7 +11,7 @@ echo $SPN_CLIENT_ID:$2 | awk '{print substr($1,2); }' >> vars.sh
 echo $SPN_CLIENT_SECRET:$3 | awk '{print substr($1,2); }' >> vars.sh
 echo $SPN_TENANT_ID:$4 | awk '{print substr($1,2); }' >> vars.sh
 echo $vmName:$5 | awk '{print substr($1,2); }' >> vars.sh
-echo $AZURE_LOCATION:$6 | awk '{print substr($1,2); }' >> vars.sh
+echo $location:$6 | awk '{print substr($1,2); }' >> vars.sh
 sed -i '2s/^/export adminUsername=/' vars.sh
 sed -i '3s/^/export SPN_CLIENT_ID=/' vars.sh
 sed -i '4s/^/export SPN_CLIENT_SECRET=/' vars.sh
@@ -47,5 +47,4 @@ sudo -u $adminUsername az login --service-principal --username $SPN_CLIENT_ID --
 
 # Onboard the cluster to Azure Arc
 resourceGroup=$(sudo -u $adminUsername az resource list --query "[?name=='$vmName']".[resourceGroup] --resource-type "Microsoft.Compute/virtualMachines" -o tsv)
-sudo -u $adminUsername az connectedk8s connect --name $vmName --resource-group $resourceGroup --location $AZURE_LOCATION --tags 'Project=jumpstart_azure_arc_k8s'
-
+sudo -u $adminUsername az connectedk8s connect --name $vmName --resource-group $resourceGroup --location $location --tags 'Project=jumpstart_azure_arc_k8s'
