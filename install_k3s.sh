@@ -1,0 +1,51 @@
+#!/bin/bash
+exec >logfile
+exec 2>&1
+
+sudo apt-get update
+
+# Injecting environment variables
+echo '#!/bin/bash' >> vars.sh
+echo $adminUsername:$1 | awk '{print substr($1,2); }' >> vars.sh
+echo $SPN_CLIENT_ID:$2 | awk '{print substr($1,2); }' >> vars.sh
+echo $SPN_CLIENT_SECRET:$3 | awk '{print substr($1,2); }' >> vars.sh
+echo $SPN_TENANT_ID:$4 | awk '{print substr($1,2); }' >> vars.sh
+echo $K3s_VM_NAME:$5 | awk '{print substr($1,2); }' >> vars.sh
+echo $AZURE_LOCATION:$6 | awk '{print substr($1,2); }' >> vars.sh
+sed -i '2s/^/export adminUsername=/' vars.sh
+sed -i '3s/^/export SPN_CLIENT_ID=/' vars.sh
+sed -i '4s/^/export SPN_CLIENT_SECRET=/' vars.sh
+sed -i '5s/^/export SPN_TENANT_ID=/' vars.sh
+sed -i '6s/^/export K3s_VM_NAME=/' vars.sh
+sed -i '7s/^/export AZURE_LOCATION=/' vars.sh
+
+chmod +x vars.sh 
+. ./vars.sh
+
+publicIp=$(curl icanhazip.com)
+
+# Installing Rancer K3s single master cluster using k3sup
+sudo -u $adminUsername mkdir /home/${adminUsername}/.kube
+curl -sLS https://get.k3sup.dev | sh
+sudo cp k3sup /usr/local/bin/k3sup
+sudo k3sup install --local --context arcboxk3s --ip $publicIp
+sudo chmod 644 /etc/rancher/k3s/k3s.yaml
+sudo cp kubeconfig /home/${adminUsername}/.kube/config
+chown -R $adminUsername /home/${adminUsername}/.kube/
+
+# Installing Helm 3
+sudo snap install helm --classic
+
+# Installing Azure CLI & Azure Arc Extensions
+sudo apt-get update
+curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
+
+sudo -u $adminUsername az extension add --name connectedk8s
+sudo -u $adminUsername az extension add --name k8s-configuration
+
+sudo -u $adminUsername az login --service-principal --username $SPN_CLIENT_ID --SPN_CLIENT_SECRET $SPN_CLIENT_SECRET --tenant $SPN_TENANT_ID
+
+# Onboard the cluster to Azure Arc
+resourceGroup=$(sudo -u $adminUsername az resource list --query "[?name=='$K3s_VM_NAME']".[resourceGroup] --resource-type "Microsoft.Compute/virtualMachines" -o tsv)
+sudo -u $adminUsername az connectedk8s connect --name $K3s_VM_NAME --resource-group $resourceGroup --location $AZURE_LOCATION --tags 'Project=jumpstart_azure_arc_k8s'
+
