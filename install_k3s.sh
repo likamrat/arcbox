@@ -15,7 +15,7 @@ sed -i '3s/^/export SPN_CLIENT_ID=/' vars.sh
 sed -i '4s/^/export SPN_CLIENT_SECRET=/' vars.sh
 sed -i '5s/^/export SPN_TENANT_ID=/' vars.sh
 sed -i '6s/^/export vmName=/' vars.sh
-sed -i '7s/^/export AZURE_LOCATION=/' vars.sh
+sed -i '7s/^/export location=/' vars.sh
 
 chmod +x vars.sh 
 . ./vars.sh
