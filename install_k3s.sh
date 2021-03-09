@@ -50,6 +50,6 @@ sudo -u $adminUsername az connectedk8s connect --name $vmName --resource-group $
 sudo sed -i "s/PasswordAuthentication no/PasswordAuthentication yes/" /etc/ssh/sshd_config
 sudo adduser staginguser --gecos "First Last,RoomNumber,WorkPhone,HomePhone" --disabled-password
 sudo echo "staginguser:ArcPassw0rd" | sudo chpasswd
-sudo cp kubeconfig /home/${adminUsername}/.kube/config.staging
-sudo chown staginguser ~/.kube/config.staging
+sudo cp kubeconfig /home/staginguser/.kube/config.staging
+chown -R staginguser /home/staginguser/.kube/
 sudo service sshd restart
