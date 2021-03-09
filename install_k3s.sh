@@ -46,3 +46,10 @@ sudo -u $adminUsername az login --service-principal --username $SPN_CLIENT_ID --
 # Onboard the cluster to Azure Arc
 resourceGroup=$(sudo -u $adminUsername az resource list --query "[?name=='$vmName']".[resourceGroup] --resource-type "Microsoft.Compute/virtualMachines" -o tsv)
 sudo -u $adminUsername az connectedk8s connect --name $vmName --resource-group $resourceGroup --location $location --tags 'Project=jumpstart_azure_arc_k8s'
+
+sudo sed -i "s/PasswordAuthentication no/PasswordAuthentication yes/" /etc/ssh/sshd_config
+sudo adduser staginguser --gecos "First Last,RoomNumber,WorkPhone,HomePhone" --disabled-password
+sudo echo "staginguser:ArcPassw0rd" | sudo chpasswd
+sudo cp kubeconfig /home/${adminUsername}/.kube/config.staging
+sudo chown staginguser ~/.kube/config.staging
+sudo service sshd restart
