@@ -1,6 +1,6 @@
 #!/bin/bash
-# exec >logfile
-# exec 2>&1
+exec >logfile
+exec 2>&1
 
 sudo apt-get update
 
