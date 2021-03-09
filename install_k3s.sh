@@ -1,6 +1,12 @@
 #!/bin/bash
+# exec >logfile
+# exec 2>&1
 
 sudo apt-get update
+
+sudo sed -i "s/PasswordAuthentication no/PasswordAuthentication yes/" /etc/ssh/sshd_config
+sudo adduser staginguser --gecos "First Last,RoomNumber,WorkPhone,HomePhone" --disabled-password
+sudo echo "staginguser:ArcPassw0rd" | sudo chpasswd
 
 # Injecting environment variables
 echo '#!/bin/bash' >> vars.sh
@@ -30,6 +36,8 @@ sudo k3sup install --local --context arcboxk3s --ip $publicIp
 sudo chmod 644 /etc/rancher/k3s/k3s.yaml
 sudo cp kubeconfig /home/${adminUsername}/.kube/config
 chown -R $adminUsername /home/${adminUsername}/.kube/
+sudo cp kubeconfig /home/staginguser/.kube/config
+chown -R staginguser /home/staginguser/.kube/
 
 # Installing Helm 3
 sudo snap install helm --classic
@@ -47,9 +55,4 @@ sudo -u $adminUsername az login --service-principal --username $SPN_CLIENT_ID --
 resourceGroup=$(sudo -u $adminUsername az resource list --query "[?name=='$vmName']".[resourceGroup] --resource-type "Microsoft.Compute/virtualMachines" -o tsv)
 sudo -u $adminUsername az connectedk8s connect --name $vmName --resource-group $resourceGroup --location $location --tags 'Project=jumpstart_azure_arc_k8s'
 
-sudo sed -i "s/PasswordAuthentication no/PasswordAuthentication yes/" /etc/ssh/sshd_config
-sudo adduser staginguser --gecos "First Last,RoomNumber,WorkPhone,HomePhone" --disabled-password
-sudo echo "staginguser:ArcPassw0rd" | sudo chpasswd
-sudo cp kubeconfig /home/staginguser/.kube/config.staging
-chown -R staginguser /home/staginguser/.kube/
 sudo service sshd restart
