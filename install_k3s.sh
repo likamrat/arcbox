@@ -35,9 +35,9 @@ sudo cp k3sup /usr/local/bin/k3sup
 sudo k3sup install --local --context arcboxk3s --ip $publicIp
 sudo chmod 644 /etc/rancher/k3s/k3s.yaml
 sudo cp kubeconfig /home/${adminUsername}/.kube/config
+sudo cp kubeconfig /home/${adminUsername}/.kube/config.staging
 chown -R $adminUsername /home/${adminUsername}/.kube/
-sudo cp kubeconfig /home/staginguser/.kube/config
-chown -R staginguser /home/staginguser/.kube/
+chown -R staginguser /home/${adminUsername}/.kube/config.staging
 
 # Installing Helm 3
 sudo snap install helm --classic
