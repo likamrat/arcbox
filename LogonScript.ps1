@@ -1,5 +1,10 @@
 Start-Transcript "C:\ArcBox\LogonScript.log"
 
+$ArcBoxDir = "C:\ArcBox"
+$vmDir = "C:\ArcBox\Virtual Machines"
+$agentScript = "C:\ArcBox\agentScript"
+$tempDir = "C:\Temp"
+
 Function Set-VMNetworkConfiguration {
     [CmdletBinding()]
     Param (
@@ -69,25 +74,24 @@ Function Set-VMNetworkConfiguration {
         $job=[WMI]$setip.job 
 
         while ($job.JobState -eq 3 -or $job.JobState -eq 4) {
-            start-sleep 1
+            Start-Sleep 1
             $job=[WMI]$setip.job
         }
 
         if ($job.JobState -eq 7) {
-            write-host "Success"
+            Write-Output "Success"
         }
         else {
             $job.GetError()
         }
     } elseif($setip.ReturnValue -eq 0) {
-        Write-Host "Success"
+        Write-Output "Success"
     }
 }
 
 # Install and configure DHCP service (used by Hyper-V nested VMs)
-Write-Output "Install and configure DHCP service"
+Write-Output "Configure DHCP service"
 $dnsClient = Get-DnsClient | Where-Object {$_.InterfaceAlias -eq "Ethernet" }
-Install-WindowsFeature -Name "DHCP" -IncludeManagementTools
 Add-DhcpServerv4Scope -Name "ArcBox" -StartRange 10.10.1.1 -EndRange 10.10.1.254 -SubnetMask 255.0.0.0 -State Active
 Add-DhcpServerv4ExclusionRange -ScopeID 10.10.1.0 -StartRange 10.10.1.101 -EndRange 10.10.1.120
 Set-DhcpServerv4OptionValue -DnsDomain $dnsClient.ConnectionSpecificSuffix -DnsServer 168.63.129.16
@@ -115,45 +119,17 @@ New-NetIPAddress -IPAddress 10.10.1.1 -PrefixLength 24 -InterfaceIndex $adapter.
 Write-Output "Enable Enhanced Session Mode"
 Set-VMHost -EnableEnhancedSessionMode $true
 
-# Create paths
-Write-Output "Create paths"
-$vmDir = 'C:\ArcBox\Virtual Machines'
-$tempDir = "C:\Temp"
-New-Item -Path $vmDir -ItemType directory -Force
-New-Item -Path $tempDir -ItemType directory -Force
-
+# Downloading and extracting the 3 VMs
+Write-Output "Downloading and extracting the 3 VMs. This can take some time, hold tight..."
+# Invoke-WebRequest "https://arcinbox.blob.core.windows.net/vhds/ArcBoxUbuntu.zip" -OutFile "C:\Temp\ArcBoxUbuntu.zip"
+# Invoke-WebRequest "https://arcinbox.blob.core.windows.net/vhds/MyApp.zip" -OutFile "C:\Temp\MyApp.zip"
+# Invoke-WebRequest "https://arcinbox.blob.core.windows.net/vhds/SQL.zip" -OutFile "C:\Temp\SQL.zip"
 # Download "Arc in a Box" VMs for Azure Arc enabled servers from blob storage
 Write-Output "Download nested VM zip files using AzCopy"
 $sourceFolder = 'https://arcinbox.blob.core.windows.net/vhds'
 azcopy cp --check-md5 FailIfDifferentOrMissing $sourceFolder/*? $tempDir --recursive
-
-# Unzip the VMs in parallel
-Write-Output "Unzip the VMs in parallel, this can take A while"
-workflow Unzip-File{
-    Param (
-        [Object]$Files,
-        [string]$Destination,
-        [switch]$SeprateFolders
-    )
-    foreach -parallel ($File in $Files){
-        if($SeprateFolders){
-            Write-Output "$($file.Name) : Started"
-            Expand-Archive -Path $File -DestinationPath "$Destination\$($file.BaseName)"
-            Write-Output "$($file.Name) : Completed"
-        }else{
-            Write-Output "$($file.Name) : Started"
-            Expand-Archive -Path $File -DestinationPath $Destination
-            Write-Output "$($file.Name) : Completed"
-        }      
-    }
-}
-
-try{
-    $ZipFiles = Get-ChildItem $tempDir\*.zip
-    Unzip-File -Files $ZipFiles -Destination $vmDir -SeprateFolders
-}catch{
-    Write-Error $_
-}
+$command = "7z x '$tempDir' -o'$vmDir'"
+Invoke-Expression $command
 
 # Create the nested VMs
 Write-Output "Create Hyper-V VMs"
@@ -169,11 +145,18 @@ Set-VMProcessor -VMName ArcBoxUbuntu -Count 2
 
 # We always want the VMs to start with the host and shut down cleanly with the host
 Write-Output "Set VM auto start/stop"
-Get-VM | Set-VM -AutomaticStartAction Start -AutomaticStopAction ShutDown
+Set-VM -Name ArcBoxWin -AutomaticStartAction Start -AutomaticStopAction ShutDown
+Set-VM -Name ArcBoxSQL -AutomaticStartAction Start -AutomaticStopAction ShutDown
+Set-VM -Name ArcBoxUbuntu -AutomaticStartAction Start -AutomaticStopAction ShutDown
+
+Write-Output "Enabling Guest Integration Service"
+Get-VM | Get-VMIntegrationService | ? {-not($_.Enabled)} | Enable-VMIntegrationService -Verbose
 
 # Start all the VMs
 Write-Output "Start VMs"
-Get-VM | Start-VM
+Start-VM -Name ArcBoxWin
+Start-VM -Name ArcBoxSQL
+Start-VM -Name ArcBoxUbuntu
 
 Start-Sleep -s 20
 $username = "Administrator"
@@ -184,27 +167,51 @@ $cred = new-object -typename System.Management.Automation.PSCredential -argument
 Invoke-Command -VMName ArcBoxWin -ScriptBlock { Get-NetAdapter | Restart-NetAdapter } -Credential $cred
 Invoke-Command -VMName ArcBoxSQL -ScriptBlock { Get-NetAdapter | Restart-NetAdapter } -Credential $cred
 
-# # Gracefully restarting Windows nested VMs
-# Write-Output "Gracefully restarting Windows nested VMs"
-# Start-Sleep -s 15
-# $username = "Administrator"
-# $password = "ArcDemo123!!"
-# $secstr = New-Object -TypeName System.Security.SecureString
-# $password.ToCharArray() | ForEach-Object {$secstr.AppendChar($_)}
-# $cred = new-object -typename System.Management.Automation.PSCredential -argumentlist $username, $secstr
-# Restart-Computer -ComputerName "10.10.1.2", "10.10.1.3" -Credential $cred -Force
+Start-Sleep -s 5
+
+# Configure the ArcBox VM to allow the nested VMs onboard as Azure Arc enabled servers
+Write-Output "Configure the ArcBox VM to allow the nested VMs onboard as Azure Arc enabled servers"
+Set-Service WindowsAzureGuestAgent -StartupType Disabled -Verbose
+Stop-Service WindowsAzureGuestAgent -Force -Verbose
+New-NetFirewallRule -Name BlockAzureIMDS -DisplayName "Block access to Azure IMDS" -Enabled True -Profile Any -Direction Outbound -Action Block -RemoteAddress 169.254.169.254
+
+# Hard-coded username and password for the nested Windows VMs
+$nestedWindowsUsername = "Administrator"
+$nestedWindowsPassword = "ArcDemo123!!"
+# $nestedLinuxUsername = "Administrator"
+# $nestedLinuxPassword = "ArcDemo123!!"
+
+# Copying the Azure Arc Connected Agent to nested VMs
+Write-Output "Copying the Azure Arc Connected Agent to nested VMs"
+(Get-Content -path "C:\ArcBox\installArcAgent.ps1" -Raw) -replace '\$spnClientId',"'$env:spnClientId'" | Set-Content -Path "C:\ArcBox\$agentScript\1.ps1"
+(Get-Content -path "C:\ArcBox\$agentScript\1.ps1" -Raw) -replace '\$spnClientSecret',"'$env:spnClientSecret'" | Set-Content -Path "C:\ArcBox\$agentScript\2.ps1"
+(Get-Content -path "C:\ArcBox\$agentScript\2.ps1" -Raw) -replace '\$resourceGroup',"'$env:resourceGroup'" | Set-Content -Path "C:\ArcBox\$agentScript\3.ps1"
+(Get-Content -path "C:\ArcBox\$agentScript\3.ps1" -Raw) -replace '\$spnTenantId',"'$env:spnTenantId'" | Set-Content -Path "C:\ArcBox\$agentScript\4.ps1"
+(Get-Content -path "C:\ArcBox\$agentScript\4.ps1" -Raw) -replace '\$Azurelocation',"'$env:Azurelocation'" | Set-Content -Path "C:\ArcBox\$agentScript\5.ps1"
+(Get-Content -path "C:\ArcBox\$agentScript\5.ps1" -Raw) -replace '\$subscriptionId',"'$env:subscriptionId'" | Set-Content -Path "C:\ArcBox\$agentScript\installArcAgentModified.ps1"
+
+Copy-VMFile "ArcBoxWin" -SourcePath "C:\ArcBox\$agentScript\installArcAgentModified.ps1" -DestinationPath C:\Temp\installArcAgent.ps1 -CreateFullPath -FileSource Host
+
+# Onboarding the nested VMs as Azure Arc enabled servers
+Write-Output "Onboarding the nested VMs as Azure Arc enabled servers"
+$secstr = New-Object -TypeName System.Security.SecureString
+$nestedWindowsPassword.ToCharArray() | ForEach-Object {$secstr.AppendChar($_)}
+$cred = new-object -typename System.Management.Automation.PSCredential -argumentlist $nestedWindowsUsername, $secstr
+
+Invoke-Command -VMName ArcBoxWin -ScriptBlock { powershell -File C:\Temp\installArcAgent.ps1 } -Credential $cred
+
+
+
+
+# Remove-Item "C:\ArcBox\$agentScript" -Recurse -Force
+
+
 
 # Creating Hyper-V Manager desktop shortcut
 Copy-Item -Path "C:\ProgramData\Microsoft\Windows\Start Menu\Programs\Administrative Tools\Hyper-V Manager.lnk" -Destination "C:\Users\All Users\Desktop" -Force
 
 # Starting Hyper-V Manager
 Start-Process -FilePath "C:\ProgramData\Microsoft\Windows\Start Menu\Programs\Administrative Tools\Hyper-V Manager.lnk" -WindowStyle Maximized
-
-# Configure the ArcBox VM to allow the nested VMs onboard as Azure Arc enabled servers
-# Write-Host "Configure the OS to allow Azure Arc Agent to be deploy on an Azure VM"
-# Set-Service WindowsAzureGuestAgent -StartupType Disabled -Verbose
-# Stop-Service WindowsAzureGuestAgent -Force -Verbose
-# New-NetFirewallRule -Name BlockAzureIMDS -DisplayName "Block access to Azure IMDS" -Enabled True -Profile Any -Direction Outbound -Action Block -RemoteAddress 169.254.169.254 
 
 # Removing the LogonScript Scheduled Task so it won't run on next reboot
 Unregister-ScheduledTask -TaskName "LogonScript" -Confirm:$false
