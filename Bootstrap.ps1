@@ -24,14 +24,12 @@ $agentScript = "C:\ArcBox\agentScript"
 $tempDir = "C:\Temp"
 New-Item -Path $ArcBoxDir -ItemType directory -Force
 New-Item -Path $vmDir -ItemType directory -Force
-New-Item -Path $tempDir -ItemType directory -Force
 New-Item -Path $agentScript -ItemType directory -Force
+New-Item -Path $tempDir -ItemType directory -Force
 
 Start-Transcript "C:\ArcBox\Bootstrap.log"
 
 $ErrorActionPreference = 'SilentlyContinue'
-
-# $sourceFolder = "https://arcinbox.blob.core.windows.net/vhds"
 
 # Uninstall Internet Explorer
 Disable-WindowsOptionalFeature -FeatureName Internet-Explorer-Optional-amd64 -Online -NoRestart
@@ -52,15 +50,13 @@ Disable-ieESC
 Write-Host "Extending C:\ partition to the maximum size"
 Resize-Partition -DriveLetter C -Size $(Get-PartitionSupportedSize -DriveLetter C).SizeMax
 
+# Installing Posh-SSH PowerShell Module
+Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force
+Install-Module -Name Posh-SSH -Force
+
 # Installing DHCP service 
 Write-Output "Installing DHCP service"
 Install-WindowsFeature -Name "DHCP" -IncludeManagementTools
-
-# Install Windows Subsystem for Linux
-# Used for Bash shell to SSH to the ArcBoxUbuntu
-# Enable-WindowsOptionalFeature -Online -FeatureName Microsoft-Windows-Subsystem-Linux -NoRestart
-# dism.exe /online /enable-feature /featurename:VirtualMachinePlatform /all /norestart
-
 
 # Installing tools
 workflow ClientTools_01
@@ -99,6 +95,8 @@ workflow ClientTools_01
                     # Invoke-WebRequest "https://aka.ms/azdata-msi" -OutFile "C:\tmp\AZDataCLI.msi"
                     Invoke-WebRequest "https://arcinbox.blob.core.windows.net/scripts/LogonScript.ps1" -OutFile "C:\ArcBox\LogonScript.ps1"
                     Invoke-WebRequest "https://arcinbox.blob.core.windows.net/scripts/installArcAgent.ps1" -OutFile "C:\ArcBox\agentScript\installArcAgent.ps1"
+                    Invoke-WebRequest "https://arcinbox.blob.core.windows.net/scripts/installArcAgentSQL.ps1" -OutFile "C:\ArcBox\agentScript\installArcAgentSQL.ps1"
+                    Invoke-WebRequest "https://arcinbox.blob.core.windows.net/scripts/installArcAgent.sh" -OutFile "C:\ArcBox\agentScript\installArcAgent.sh"
                 }
         }
 
@@ -119,15 +117,9 @@ RefreshEnv
         
 # ClientTools_02 | Format-Table 
 
-
-
 # Clonning the Azure Arc Jumpstart git repository
 Write-Output "Clonning the Azure Arc Jumpstart git repository"
 git clone https://github.com/microsoft/azure_arc.git "C:\ArcBox\azure_arc"
-
-# New-Item -path alias:kubectl -value 'C:\ProgramData\chocolatey\lib\kubernetes-cli\tools\kubernetes\client\bin\kubectl.exe'
-# New-Item -path alias:azdata -value 'C:\Program Files (x86)\Microsoft SDKs\Azdata\CLI\wbin\azdata.cmd'
-
 
 # Downloading the LogonScript and creating scheduled task
 $Trigger = New-ScheduledTaskTrigger -AtLogOn
